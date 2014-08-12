@@ -1,0 +1,570 @@
+@author Eric Pailleau <swab@crownedgrouse.com>
+@copyright 2014 crownedgrouse.com
+@version 1.0.0
+@title Welcome to the swab module documentation !
+@doc `swab' is a general purpose buffer handling module
+
+== Preamble ==
+The origin of this module was the need to solve a not so unusual concern : an external program was exiting always 0 even on error.
+The lone way to know the status of the commands was to analyse stdout and stderr.
+
+The program has disappeared, but the module remained. It was then augmented with several refactoring and converting features, that use Erlang BIF or not,
+and became a more generic tool. 
+
+A kind of <b>S</b>wiss knife <b>W</b>orking <b>A</b>ll <b>B</b>uffers ...
+
+More seriously, module name comes from the relationship with the word `buffer' and also from the act of reordering data to compensate for Endian incompatibilities.
+
+== Abstract ==
+
+`swab' can cast data and sort lines. See {@section Refactoring}
+
+`swab' can decode, encode and convert data, including several EBCDIC flavours. See {@section Encoding / Converting}
+
+`swab' can catch data that becomes the new current buffer. See {@section Catching data}
+
+`swab' can match data and return the current buffer or otherwise continue next directives, if any. See {@section Matching data}
+
+`swab' can store a buffer queue and maybe use it later to compose another buffer for instance, by merging or concatenating. See {@section Buffers handling}
+
+`swab' can do diverse specialized actions. (Pull requests welcome !). See {@section Misc}
+
+`swab' give the possibility to debug all or part of the directive chain, to do hexdump "à la" ``od'' and also ASN1 pretty printing "à la" ``openssl asn1parse''. See {@section Debugging / Pretty printing}
+
+`swab' offer a very easy way to chain directives as you would do by chaining commands with pipes in a shell.
+Each step can modify the input buffer that becomes a new current buffer, and so on. See {@section Examples}
+
+== Quality ==
+
+Dialyzer, Unit tests and Common tests are used to insure the maximum quality.
+If however you find a bug, please signal it on the GitHub page by opening an issue ticket, or better, fix it and propose a Pull Request.
+Features addition are welcome too.
+
+note : Unit tests are only done on directives that are not using BIFs.
+
+<hr/>
+
+== Usages ==
+
+Only three tuple forms can be expected for sync/1 or sync/2 functions return:
+
+``{ok, Buffer}'' where Buffer is the last buffer.
+
+``{match, MatchingDirective, Buffer}'' where Buffer is the current buffer when the match is found.
+
+``{error, OffendingDirective , Message}'' where Message is a reason string.
+
+Note, if no matching directive is used, it is not necessary to expect ``match'' tuple in your code. 
+
+Be careful, some directive returned in ``match'' or ``error'' tuple, might have been modified, mainly to add default options (see ``regexp'' directive, for example). In below documentation, those directives have a star * at end of argument that is possibly rewritten. However you have to take care of this only if more than one matching directive is used in the chain and different actions must be done depending the matching directive returned.
+
+=== Refactoring ===
+
+==== {cast, upper } ==== 
+
+Cast the current buffer content to uppercase.
+
+```swab:sync({cast, upper },"I love Erlang !").
+   {ok, "I LOVE ERLANG !"}'''
+
+==== {cast, lower } ====
+Cast the current buffer content to lowercase.
+
+```swab:sync({cast, lower },"I love Erlang !").
+   {ok, "i love erlang !"}'''
+
+==== {trim, Mode* } ====
+```Mode = Sens | {Sens, Char}
+   Sens = left | right | both
+   Char = integer()'''
+
+* : Default to blank character (``{Sens, $\040}'')
+
+Trim buffer left, right or both. Another character than blank can be used by setting it in second argument of tuple.
+
+```swab:sync({trim, both },"   I love Erlang !   ").
+   {ok, "I love Erlang !"}
+
+   swab:sync({trim, left },"   I love Erlang !   ").
+   {ok, "I love Erlang !   "}
+
+   swab:sync({trim, right },"   I love Erlang !   ").
+   {ok, "   I love Erlang !"}
+
+   swab:sync({trim, {both, $.} },".................").
+   {ok, []}
+'''
+
+==== {feed, Mode* } ====
+```Mode = integer() | {integer(), Char}
+   Char = integer()'''
+
+* : Default is set to ``{integer(), $\040}''
+
+Feed buffer lines up to ``integer()'' length with blanks, by default, or with ``Char'' character.
+If integer() &lt; 0, feeding is done at beginning of lines.
+
+Warning : Any new lines will be normalized to local new lines !
+
+``` swab:sync({feed,10}, "abc\nadcdefghij\n12345678\n987654321").
+    {ok,"abc       \nadcdefghij\n12345678  \n987654321 "}
+
+    swab:sync({feed, {10, $*}}, "abc\nadcdefghij\n12345678\n987654321").
+    {ok,"abc*******\nadcdefghij\n12345678**\n987654321*"}
+
+    swab:sync({feed, {-10, $*}}, "abc\nadcdefghij\n12345678\n987654321").
+    {ok,"*******abc\nadcdefghij\n**12345678\n*987654321"}'''
+
+==== {fold , integer()} ====
+
+Fold buffer with local newlines, to fit in specified line width.  
+
+Warning : DOS newlines \r\n should be normalized to a single character new lines (probably \n) before,
+          or a local newline could be inserted between \r and \n.
+
+```swab:sync({fold, 10}, "1234567890123456789abcdefghijkl") .
+   {ok,"1234567890\n123456789a\nbcdefghijk\nl"}
+
+   swab:sync({fold, 10}, "1234567\n890123456789abc\ndefghijkl") .  
+   {ok,"1234567\n89\n0123456789\nabc\ndefghi\njkl"}'''
+
+==== {sort, Mode} ====
+``Mode = normal | reverse | inverse''
+
+Sorting current buffer.
+
+<ol>
+	<li>``normal''  : normal alphabetic sort. Tip : ISO dates starting log lines are sorted nicely with this directive...</li>
+	<li>``reverse'' : reverse normal alphabetic sort. Same as ``[{sort, normal}, {sort,inverse}]''</li>
+	<li>``inverse'' : inverse line order from last line to first line.</li>
+</ol>
+
+```swab:sync({sort, normal}, "aaa\nccc\nbbb\nddd\n").
+   {ok,"aaa\nbbb\nccc\nddd"}
+
+   swab:sync({sort, reverse}, "aaa\nccc\nbbb\nddd\n").
+   {ok,"ddd\nccc\nbbb\naaa"}
+
+   swab:sync({sort, inverse}, "aaa\nccc\nbbb\nddd\n").
+   {ok,"ddd\nbbb\nccc\naaa"}'''
+
+<hr/>
+=== Encoding / Converting ===
+
+==== {decode, Type} ====
+``Type = latin1 | unicode | utf8 | utf16 | utf32 | {utf16, big} | {utf16, little} | {utf32, big} | {utf32, little} | ebcdic''
+
+Decode current buffer to Unicode.
+Converts the current buffer from the given format to pure Unicode. The purpose of the function is mainly to be able to convert combinations of unicode characters into a pure unicode string.
+
+Except ``ebcdic'', all other types use Erlang BIFs, from unicode module.
+
+==== {encode, Type} ====
+``Type = latin1 | unicode | utf8 | utf16 | utf32 | {utf16, big} | {utf16, little} | {utf32, big} | {utf32, little} | ebcdic''
+
+Encode current buffer from Unicode to something.
+
+Except ``ebcdic'', all other types use Erlang BIFs, from unicode module.
+
+==== {convert, Type} ====
+``Type = der | pem | base64 | mime | uncompress | unzip | gunzip | compress | zip | gzip | nonl | local_nl''
+
+Convertion of current buffer. 
+
+<ol type="a">
+     <li> ``der | pem'' convert x509 certificate to der or pem, assuming the buffer contains the contrary (i.e pem or der).</li>
+     <li> ``base64 | mime'' Same as 'decode' but for base64 encoding and mime RFC4648.
+        'mime' strips away illegal characters, while 'base64' only strips 
+        away whitespace characters.</li>
+
+     <li> ``uncompress | unzip | gunzip | compress | zip | gzip''
+        Same as a) but for main compression algorithms. 
+	    <ul>
+        	<li>``uncompress'' : Uncompress a binary (with zlib headers and checksum).</li>
+        	<li>``unzip'' : Uncompress a binary (without zlib headers and checksum).</li>
+        	<li>``gunzip'' : Uncompress a binary (with gz headers and checksum).</li>
+        </ul>
+     </li>
+
+     <li> ``nonl'' Removes any new lines separators whatever the OS type 
+        (``\r'', ``\r\n'', ``\n'' but also ``\f'', ``\x85'' and ``\x0b'').</li>
+
+     <li> ``local_nl'' Convert any new lines to local new lines.</li>
+</ol>
+
+Except ``nonl'' and ``local_nl'' , all other types use Erlang BIFs, from several modules.
+
+<hr/>
+=== Catching data ===
+
+==== {sub_word, Integer} ====
+Returns the word in position Integer of String in current buffer. Words are separated by blanks.
+
+```swab:sync({sub_word, 3 },"I love Erlang !").
+   {ok, "Erlang"}'''
+
+==== {jump, Mode} ====
+``Mode = integer() | first | last''
+
+Line jumping on current buffer.
+<ol type="a">
+	<li> ``[integer()]'' Jump to the given line number and bring only lines after. 
+			<ul>
+			 <li>Be carefull, if line does not exist, it will empty the buffer ! </li>
+                         <li>Negative value will bring the lines from the end.</li>
+                         <li>zero will bring all the lines.</li>
+			</ul>
+	</li>
+	<li> ``[last|first]'' : Bring only the last/first line of current buffer.</li>
+</ol>
+Warning : Any new lines will be normalized to local new lines !
+
+```swab:sync({jump, last },"Definitely...\nI love Erlang !").
+   {ok,"I love Erlang !"}
+   
+   swab:sync({jump, first },"Definitely...\nI love Erlang !").
+   {ok,"Definitely..."}
+
+   swab:sync({jump, 1 },"Definitely...\nI love Erlang !").    
+   {ok,"I love Erlang !"}
+
+   swab:sync({jump, 2 },"Definitely...\nI love Erlang !").
+   {ok,[]}
+
+   swab:sync({jump, -1 },"Definitely...\nI love Erlang !").
+   {ok,"I love Erlang !"}'''
+
+==== {nblines, integer() } ====
+
+Get a number of lines from current buffer.
+	<ul>
+		<li>forward in buffer if &gt; 0</li>
+		<li>from end in buffer if &lt; 0</li>
+		<li>1 pick-up the first line only</li>
+		<li>0 clear the buffer !</li>
+	</ul>
+Can be used in conjunction with 'jump' before in order to discard unwanted lines. Lines found becomes the next current buffer.
+
+```swab:sync({nblines, 1 },"Definitely...\nReally...\nI love Erlang !").    
+   {ok,"Definitely..."}
+
+   swab:sync({nblines, 2 },"Definitely...\nReally...\nI love Erlang !").
+   {ok,"Definitely...\nReally..."}
+
+   swab:sync({nblines, -1 },"Definitely...\nReally...\nI love Erlang !").
+   {ok,"I love Erlang !"}'''
+
+==== {grab, Mode* } ====
+<pre>
+   Mode = Regexp | mp() | {mp(), compile_option()} | {Regexp , compile_option()} 
+   Regexp = iodata()| unicode:charlist()
+   mp() = {re_pattern, term(), term(), term(), term()}
+   compile_option() = <a href="http://www.erlang.org/doc/man/re.html"><tt>See re module compile options</tt></a>
+</pre>
+* : Default compile option is ``[{capture, all_but_first, list}]''.
+
+Warning : usage of some compile options may produce exceptions due to unexpected return value. Use at your own risk.
+
+Grab data from catching regular expression which becomes the next current buffer, or final return if last directive. 
+
+```swab:sync({grab, "^(...)"},"abcdefg").    
+   {ok,"abc"}'''
+
+If several catching expressions are used and matching, all the strings found are concatenated :
+
+```swab:sync({grab, "^(...)..(.)"},"abcdefg").    
+   {ok,"abcf"}'''
+
+<hr/>
+
+=== Matching data ===
+
+==== {equal, Comp} ====
+`` Comp = string() | binary()''
+
+Simple string (or binary) comparison. If a match is found against the current buffer, a tuple ``{match, Directive, Buffer}'' is returned and all next directives are ignored.
+
+In case of multiline buffer, String must include exact same newline separator : "abc\ndef" does not match neither "abc\r\ndef" nor "abcdef".
+
+Be carefull of buffer type : ``{equal, <<"abcdef">>}'' will not match ``"abcdef"''.
+
+==== {fread, string()} ====
+
+Try to read buffer in accordance with the formating control sequences of String. If a match is found against the current buffer, a tuple ``{match, Directive, Buffer}'' is returned and all next directives are ignored. Incomplete matches are not considered valid.
+
+``{fread, "~f~f~f"}'' matches ```"1.9 35.5e3 15.0"'''
+
+``{fread, "~10f~d"}'' matches ```"     5.67899"'''
+
+``{fread, ":~10s:~10c:"}'' matches ```":   alan   :   joe    :"'''
+
+==== {regexp, Mode* } ====
+<pre>
+   Mode = Regexp | mp() | {mp(), compile_option()} | {Regexp , compile_option()} 
+   Regexp = iodata()| unicode:charlist()
+   mp() = {re_pattern, term(), term(), term(), term()}
+   compile_option() = <a href="http://www.erlang.org/doc/man/re.html"><tt>See re module compile options</tt></a>
+</pre>
+* : Default compile option is ``[]'', and if no compile options are set, the directive will be rewritten to ``{regexp, {Regexp | mp(), []}}''. 
+If a match is found, this rewritten directive will be returned as second argument of match tuple.
+
+Warning : usage of some compile options may produce exceptions due to unexpected return value. Use at your own risk.
+
+Match data with regular expression. If directive is matching on the current buffer, a tuple ``{match, Directive, Buffer}'' is returned and all next directives are ignored.
+
+
+```swab:sync({regexp, ".*"},"abcdefg").  
+   {match, {regexp, {".*",[]}},"abcdefg"}'''
+
+The below (dummy) chain will not apply the last directive, but return at second directive :
+
+```swab:sync([{cast, upper}, {regexp, "^[A-Z]"}, {cast, lower}], "abcdefg").
+   {match, {regexp, {"^[A-Z]",[]}},"ABCDEFG"}'''
+
+while
+
+```swab:sync([{regexp, "^[1-9]"}, {cast, lower}, {regexp, "^[a-z]"}], "ABCDEFG").
+   {match, {regexp, {"^[a-z]",[]}},"abcdefg"}'''
+
+If more than one match directive is used, the second argument of the tuple returned might be used to know which directive has matched.
+
+<hr/>
+=== Buffers handling ===
+
+Buffer handing allow complexes data manipulations, mainly to compose a buffer from part of a first big input buffer,
+but also by adding external data in the directive chain.
+
+Note : the current buffer is not part of a buffer queue, unless action.
+
+==== {buffer, in} ====
+Copy current buffer at the rear (tail) of queue, and left current buffer unchanged.
+
+==== {buffer, in_r} or {buffer, ni} ====
+Copy current buffer at the front (head) of queue, and left current buffer unchanged.
+
+==== {buffer, out} ====
+Get and removes the saved buffer at the front (head) of queue.
+The extracted buffer becomes then the current buffer, while current is saved in REAR of queue if non empty.
+
+==== {buffer, out_r} or {buffer, tuo} ====
+Get and removes the saved buffer at the rear (tail) of the queue.
+The extracted buffer becomes then the current buffer, while current is saved in FRONT of queue if non empty.
+
+==== {buffer, del} ====
+Delete the current buffer. 
+Next buffer will be the first in queue (head), if any.
+
+==== {buffer, del_r} or {buffer, led} ====
+Delete the current buffer. 
+Next buffer will be the last in queue (tail), if any.
+
+==== {buffer, merge} ====
+Merge all buffers in only one buffer in queue, from head to tail.
+Current buffer is left unchanged ! 
+Local newlines are separating merged buffers.
+
+==== {buffer, merge_r} or {buffer, egrem} ====
+Merge all queued buffers in only one buffer in queue, but reverse order, i.e from tail to head.
+Current buffer is left unchanged !
+Local newlines are separating merged buffers.
+
+==== {buffer, concat} ====
+Concatenate all queued buffers in only one buffer in queue.
+Current buffer is left unchanged !
+
+==== {buffer, concat_r} or {buffer, tacnoc} ====
+Concatenate all buffers in only one buffer in queue, but reverse order.
+Current buffer is left unchanged !
+
+==== {push, Data} ====
+``Data = string() | binary() ''
+Push data as new current buffer in your directive chain (current buffer is overwritten).
+The last buffer before this directive might have been saved in buffer queue, in order to compose another buffer with the data that is pushed.
+Considere also ``store'' and ``store_r'' in such case.
+
+==== {store, Data} ====
+``Data = string() | binary() ''
+Push data directly in front (head) of buffer queue. 
+Current buffer is left unchanged.
+Same as ``[..., {buffer, in_r}, {push, Data}, {buffer, in}, {buffer, del_r}, ...]'' but more efficient.
+
+==== {store_r, Data} or {erots, Data} ====
+Push data directly in rear (tail) of buffer queue. 
+Current buffer is left unchanged.
+Same as ``[..., {buffer, in}, {push, Data}, {buffer, in_r}, {buffer, del}, ...]'' but more efficient.
+
+<hr/>
+=== Debugging / Pretty printing ===
+
+==== {debug, Mode} ====
+``Mode = on | hexdump | asn1_pp | off | queue ''
+
+Debug can be set on and off at any place in the directive chain. Usefull when wanting to debug only a particular directive.
+
+The value ``queue'' tells ``swab'' to debug the buffer queue too, but needs ``on'' to be active. 
+Queue is displayed as a list, the head is the most left and tail is the most right.
+Use ``off'', then ``on'' to reset to simple debugging.
+
+Basic debug :
+
+``` swab:sync([{debug,on}], "Call me Ishmael. Some years ago--never mind how long precisely --having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.").     
+    <0.32.0> : {debug,on} => "Call me Ishmael. Some years ago--never mind how long precisely --having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world."
+    {ok,"Call me Ishmael. Some years ago--never mind how long precisely --having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world."}'''
+
+Hexdump debug :
+
+``` swab:sync([{debug,hexdump}], "Call me Ishmael. Some years ago--never mind how long precisely --having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.").
+    <0.32.0> : {debug,hexdump} => 
+    00000000  43 61 6c 6c 20 6d 65 20 49 73 68 6d 61 65 6c 2e |Call me Ishmael.|
+    00000010  20 53 6f 6d 65 20 79 65 61 72 73 20 61 67 6f 2d | Some years ago-|
+    00000020  2d 6e 65 76 65 72 20 6d 69 6e 64 20 68 6f 77 20 |-never mind how |
+    00000030  6c 6f 6e 67 20 70 72 65 63 69 73 65 6c 79 20 2d |long precisely -|
+    00000040  2d 68 61 76 69 6e 67 20 6c 69 74 74 6c 65 20 6f |-having little o|
+    00000050  72 20 6e 6f 20 6d 6f 6e 65 79 20 69 6e 20 6d 79 |r no money in my|
+    00000060  20 70 75 72 73 65 2c 20 61 6e 64 20 6e 6f 74 68 | purse, and noth|
+    00000070  69 6e 67 20 70 61 72 74 69 63 75 6c 61 72 20 74 |ing particular t|
+    00000080  6f 20 69 6e 74 65 72 65 73 74 20 6d 65 20 6f 6e |o interest me on|
+    00000090  20 73 68 6f 72 65 2c 20 49 20 74 68 6f 75 67 68 | shore, I though|
+    000000a0  74 20 49 20 77 6f 75 6c 64 20 73 61 69 6c 20 61 |t I would sail a|
+    000000b0  62 6f 75 74 20 61 20 6c 69 74 74 6c 65 20 61 6e |bout a little an|
+    000000c0  64 20 73 65 65 20 74 68 65 20 77 61 74 65 72 79 |d see the watery|
+    000000d0  20 70 61 72 74 20 6f 66 20 74 68 65 20 77 6f 72 | part of the wor|
+    000000e0  6c 64 2e                                        |ld.|
+    {ok,"Call me Ishmael. Some years ago--never mind how long precisely --having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world."}'''
+
+ASN1 pretty printing :
+
+``` {ok, Der} = file:read_file("/tmp/certificate.der").
+    {ok,<<48,130,3,193,48,130,2,169,160,3,2,1,2,2,9,0,174,28,
+        240,36,102,146,9,116,48,13,6,...>>}
+
+    swab:sync([{debug, asn1_pp}],Der).
+    <0.36.0> : {debug,asn1_pp} => 
+    SEQUENCE
+    .  SEQUENCE
+    .  .  CONSTRUCTOR
+    .  .  .  INTEGER        : 10#2 (16#2)
+    .  .  .  END
+    .  .  INTEGER   : 10#12546166701077694836 (16#AE1CF02466920974)
+    .  .  SEQUENCE
+    .  .  .  OBJECT :  {1,2,840,113549,1,1,5}
+    .  .  .  NULL   : <<>>
+    .  .  .  END
+    .  .  SEQUENCE
+    .  .  .  SET
+    .  .  .  .  SEQUENCE
+    .  .  .  .  .  OBJECT   :  {2,5,4,6}
+    .  .  .  .  .  PRINTABLESTRING  : FR
+    .  .  .  .  .  END
+    .  .  .  .  END
+    .  .  .  SET
+    .  .  .  .  SEQUENCE
+    .  .  .  .  .  OBJECT   :  {2,5,4,8}
+    .  .  .  .  .  VALUE    : Some-State
+    .  .  .  .  .  END
+    .  .  .  .  END
+
+    ---- snip snip -----
+
+    .  .  SEQUENCE
+    .  .  .  UTCTIME        : 120708104913Z (2012-07-08 12:49:13 UTC+2)
+    .  .  .  UTCTIME        : 281211104913Z (2028-12-11 11:49:13 UTC+2)
+    .  .  .  END
+
+    ---- snip snip -----
+
+    .  .  CONSTRUCTOR
+    .  .  .  SEQUENCE
+    .  .  .  .  SEQUENCE
+    .  .  .  .  .  OBJECT   :  {2,5,29,14}
+    .  .  .  .  .  OCTET STRING     : 
+    00000000  04 14 cd 81 ab 5c e1 59 b1 a4 f3 4d a1 9a 7e ab |.....\.Y...M..~.|
+    00000010  ea fc 14 45 19 40                               |...E.@|
+    .  .  .  .  .  END
+
+    ---- snip snip -----
+
+    .  END
+    END
+    {ok,<<48,130,3,193,48,130,2,169,160,3,2,1,2,2,9,0,174,28,
+      240,36,102,146,9,116,48,13,6,...>>}
+'''
+
+<hr/>
+=== Misc ===
+
+==== {mfa, { M, F, A }} ====
+Use your own mfa() to treat or match the current buffer.
+The current buffer will be added as last argument of the function.
+The returned value becomes the new current buffer, but only if it is list() or binary().
+Any other term raise an error.
+If the mfa() is used to match a buffer, please throw an exception :  throw(match) .
+``swab'' will then return the usual ``{match, {mfa, {M, F, A}}, Buffer}''.
+
+Note : If you think your custom treatment/match module would be usefull for other people, please integrate it in swab and propose a pull request !
+
+==== {tar, fakeroot} ====
+Replace all UID/GID to 0 in a (valid) gnu tar buffer.
+Same as ``[{tar, {0, "root"}}, {tar, {"root",0}}]'' but more efficient (buffer treated only once).
+
+==== {tar, {Uid, UserName}} ====
+```
+UserName  = list()
+Uid       = integer()
+'''
+Replace all Uid and user name in a (valid) gnu tar buffer.
+
+==== {tar, {GroupName, Gid}} ====
+```
+GroupName = list()
+Gid       = integer()
+'''
+Replace all Gid and group name in a (valid) gnu tar buffer.
+
+<hr/>
+== Examples ==
+
+Bring the penultimate line :
+
+```[{jump, -2}, {nblines,1}]'''
+
+
+AS400 data received in EBCDIC without linefeed, from 128 characters length records :
+
+```[{decode,ebcdic}, {fold, 128}]'''
+
+
+Replace UID and GID to 0 in a gzip'ed tar :
+
+```[{convert, gunzip}, {fakeroot, tar}, {convert, gzip}]'''
+
+
+Merge the two first lines and the last line of a string buffer (explained with debug) :
+
+```
+swab:sync([debug, queue}, {debug, on}, {buffer, in_r}, {nblines, 2}, {buffer, in},  
+           {buffer, del}, {jump, -1}, {buffer, in}, {buffer, merge}, {buffer, del}],
+           "Erlang\n is \n not \ngreat !").
+<0.32.0> : {debug,on} => "Erlang\n is \n not \ngreat !"
+           []
+<0.32.0> : {buffer,in_r} => "Erlang\n is \n not \ngreat !"
+           ["Erlang\n is \n not \ngreat !"]
+<0.32.0> : {nblines,2} => "Erlang\n is "
+           ["Erlang\n is \n not \ngreat !"]
+<0.32.0> : {buffer,in} => "Erlang\n is "
+           ["Erlang\n is \n not \ngreat !","Erlang\n is "]
+<0.32.0> : {buffer,del} => "Erlang\n is \n not \ngreat !"
+           ["Erlang\n is "]
+<0.32.0> : {jump,-1} => "great !"
+           ["Erlang\n is "]
+<0.32.0> : {buffer,in} => "great !"
+           ["Erlang\n is ","great !"]
+<0.32.0> : {buffer,merge} => "great !"
+           ["Erlang\n is \ngreat !"]
+<0.32.0> : {buffer,del} => "Erlang\n is \ngreat !"
+           []
+{ok,"Erlang\n is \ngreat !"}'''
+
+
+
+
