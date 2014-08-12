@@ -5,5 +5,8 @@ CT_SUITES = swab
 
 include erlang.mk
 
-eunit:
+eunit: app
 	erl -noshell -pa `pwd`/ebin -pa `pwd`/priv -eval 'eunit:test(swab, [verbose])' -s init stop
+
+clean:: 
+	-@find . -type f -name \*~ -delete

@@ -30,12 +30,16 @@
 
 -include_lib("public_key/include/public_key.hrl").
 
--include("swab_lib.hrl").
--include("swab_ebcdic.hrl").
--include("swab_hexdump.hrl").
--include("swab_asn1.hrl").
--include("swab_tar.hrl").
+% Pre-compiled regexps for better performances.
+% (?>\r\n|\n|\x0b|\f|\r|\x85)
+-define(REG_LINES, {re_pattern,0,0,0,
+            <<69,82,67,80,98,0,0,0,0,0,0,0,1,8,0,0,255,255,255,255,255,255,
+              255,255,0,0,0,0,0,0,0,0,0,0,56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+              0,0,0,0,0,125,0,38,124,0,7,29,13,29,10,113,0,5,29,10,113,0,5,29,
+              11,113,0,5,29,12,113,0,5,29,13,113,0,5,29,133,114,0,32,114,0,38,
+              0>>}).
 
+-include("swab_lib.hrl").
 
 -define(SWAB_DBG(Tuple,Buf), case get(swab_dbg) of 
                                 'on'        -> io:fwrite("~s : ~p => ~p~n",[pid_to_list(self()),Tuple, Buf]),
@@ -44,16 +48,21 @@
                                                           io:fwrite("           ~p~n",[queue:to_list(get(queue))]); 
                                                     _  -> ok
                                                end;
-                                'hexdump'   -> io:fwrite("~s : ~p => ~n"  ,[pid_to_list(self()),Tuple]), hexdump(Buf) ; 
-                                'asn1_pp'   -> io:fwrite("~s : ~p => ~n"  ,[pid_to_list(self()),Tuple]), asn1_pp(Buf) ;
+                                'hexdump'   -> io:fwrite("~s : ~p => ~n"  ,[pid_to_list(self()),Tuple]), swab_hexdump:hexdump(Buf), ok ; 
+                                'asn1_pp'   -> io:fwrite("~s : ~p => ~n"  ,[pid_to_list(self()),Tuple]), _ = swab_asn1:asn1_pp(Buf), ok ;
                                 _ -> ok 
                              end  ).
 
 %%-------------------------------------------------------------------------
-%% @doc Apply rules and return synchronously
+%% @doc Apply rules and return synchronously.
+%%      <br/>Return values can be : <br/><tt>{ok, LastBuffer}</tt><br/>
+%%      <tt>{error, OffendingDirective, Message}</tt><br/>
+%%      and if match directive is used and matching :<br/>
+%%      <tt>{match, MatchingDirective, MatchingBuffer}</tt><br/>
+%%      MatchingDirective could have been rewritten with default values (See Overview).
 %% @end
 %%-------------------------------------------------------------------------
--spec sync(list()|tuple(), iolist()) -> tuple().
+-spec sync(list()|tuple(), iolist()|binary()) -> tuple().
 
 sync(Rules, Buffer) when is_tuple(Rules);
                          is_list(Rules) ->  try analyze(Buffer, Rules) of
@@ -62,24 +71,39 @@ sync(Rules, Buffer) when is_tuple(Rules);
 					    		            end. 
 
 %%-------------------------------------------------------------------------
-%% @doc Apply rules and return synchronously, but send result to a Pid
+%% @doc Apply rules and return synchronously, but send result to a Pid.
+%%      Caller Pid get atom <tt>ok</tt>.<br/>
+%%      Target Pid receives message <tt>{swab, CallerPid, SwabSyncResult}</tt>.
 %% @end
 %%-------------------------------------------------------------------------
+-spec sync(list()|tuple(), iolist(), pid()) -> ok.
+
 sync(Rules, Buffer, Pid) when is_pid(Pid) -> Return = analyze(Buffer, Rules), 
 					     Pid ! {swab, self(), Return}, 
 					     ok. 
 
 %%-------------------------------------------------------------------------
-%% @doc Apply rules asynchronously, and send result to caller Pid
+%% @doc Apply rules asynchronously, and send result to caller Pid.
+%%      Caller Pid get tuple <tt>{ok, SwabSpawnPid}</tt>.<br/>
+%%      Caller Pid receives message <tt>{swab, SwabSpawnPid, SwabSyncResult}</tt>.<br/>
+%%      The caller might store the returned value <tt>SwabSpawnPid</tt> as reference
+%%      if several messages are expected to be received.
 %% @end
 %%-------------------------------------------------------------------------
--spec async(list()|tuple(), iolist()) -> tuple().
+-spec async(list()|tuple(), iolist()) -> {ok, pid()}.
+
 async(Rules, Buffer) -> {ok, spawn(swab, sync, [Rules, Buffer, self()])}. 
 
 %%-------------------------------------------------------------------------
-%% @doc Apply rules asynchronously, but send result to a Pid
+%% @doc Apply rules asynchronously, but send result to a Pid.
+%%      Caller Pid get tuple <tt>{ok, SwabSpawnPid}</tt>.<br/>
+%%      Target Pid receives message <tt>{swab, SwabSpawnPid, SwabSyncResult}</tt>.<br/>
+%%      The caller might store the returned value <tt>SwabSpawnPid</tt> as reference
+%%      if a correlation must be done with the target.
 %% @end
 %%-------------------------------------------------------------------------
+-spec async(list()|tuple(), iolist(), pid()) -> {ok, pid()}.
+
 async(Rules, Buffer, Pid) when is_pid(Pid) -> {ok, spawn(swab, sync, [Rules, Buffer, Pid])}.
 
 %%*************************************************************************
@@ -263,7 +287,7 @@ analyze(_, {push, Data}) when is_binary(Data);
 %%@end
 %%-------------------------------------------------------------------------
 analyze(Buff, {store, Data}) when is_binary(Data);
-                                  is_list(Data) -> analyze(Data, {buffer, in_r}),
+                                  is_list(Data) -> _ = analyze(Data, {buffer, in_r}),
                                                    Buff ;
 
 %%-------------------------------------------------------------------------
@@ -273,7 +297,7 @@ analyze(Buff, {store, Data}) when is_binary(Data);
 %%-------------------------------------------------------------------------
 analyze(Buff, {erots, Data})        -> analyze(Buff, {store_r, Data});
 analyze(Buff, {store_r, Data}) when is_binary(Data);
-                                    is_list(Data) -> analyze(Data, {buffer, in}),
+                                    is_list(Data) -> _ = analyze(Data, {buffer, in}),
                                                      Buff ;
 
 %%**************************************************************************
@@ -336,7 +360,7 @@ analyze(Buff, {feed, Len}) when is_integer(Len) -> analyze(Buff, {feed, {Len, $\
 %%@end
 %%-------------------------------------------------------------------------
 analyze(Buff, {feed, {Len, Char}}) when is_integer(Len),
-                                        is_integer(Char) -> L = re:split(Buff,"(?>\r\n|\n|\x0b|\f|\r|\x85)",[{return,list}]),
+                                        is_integer(Char) -> L = re:split(Buff,?REG_LINES,[{return,list}]),
                                                             R = case (Len < 0) of
                                                                     true  -> lists:flatmap(fun(X) -> [string:right(X, (- Len), Char)] end, L) ;
                                                                     false -> lists:flatmap(fun(X) -> [string:left(X, Len, Char)] end, L)
@@ -370,6 +394,7 @@ analyze(Buff, {fold, Len}) when is_integer(Len),
 %%     d) nonl - Removes any new lines separators whatever the OS type 
 %%        (\r, \r\n, \n but also \f, \x85 and \x0b).
 %%     e) local_nl - Convert any new lines to local new lines.
+%%     f) swab - exchange adjacent even and odd bytes.
 %%@end
 %%-------------------------------------------------------------------------
 analyze(Buff, {convert, Type}) -> NewBuff = case Type of
@@ -385,6 +410,7 @@ analyze(Buff, {convert, Type}) -> NewBuff = case Type of
                                        		gzip 		-> (catch zlib:gzip(Buff)) ;
                                        		nonl 		-> nonl(Buff, []);
 						                    local_nl    -> analyze(Buff, {jump, 0}) ;
+                                            swab        -> swab(Buff);
                                        		_ 		-> throw(badarg), Buff
                                   	    end,
                                   case NewBuff of
@@ -412,7 +438,7 @@ analyze(Buff, {decode, Type}) -> NewBuff = case Type of
                                        		{utf32, big}	-> (catch to_unicode(Buff,Type));
                                        		{utf32, little}	-> (catch to_unicode(Buff,Type));
                                        		utf32 		-> (catch to_unicode(Buff,Type));
-                                       		ebcdic 		-> e2a(Buff);
+                                       		ebcdic 		-> swab_ebcdic:e2a(Buff);
                                        		_ 		-> throw(badarg), Buff
                                   	    end,   
                                   case NewBuff of
@@ -436,7 +462,7 @@ analyze(Buff, {encode, Type}) -> NewBuff = case Type of
                                        		{utf32, big}	-> (catch from_unicode(Buff,Type));
                                        		{utf32, little}	-> (catch from_unicode(Buff,Type));
                                        		utf32 		-> (catch from_unicode(Buff,Type));
-						                    ebcdic		-> a2e(Buff);
+						                    ebcdic		-> swab_ebcdic:a2e(Buff);
                                        		_ 		-> throw(badarg), Buff
                                   	    end,
                                   case NewBuff of
@@ -448,21 +474,15 @@ analyze(Buff, {encode, Type}) -> NewBuff = case Type of
 
 %%-------------------------------------------------------------------------
 %%@doc Line extracting on current buffer (jump)
-%%       a) Integer      : Jump to the given line number and bring only 
-%%                         lines after. Be carefull, if line does not exist, 
-%%                         it will empty the buffer !
-%%                         Negative value will discard the given last lines.
-%%                         zero will bring all the lines.
-%%       b) [last|first] : Bring only the last/first line of current buffer.
+%%       Jump to the given line number and bring only lines after. 
+%%       Be carefull, if line does not exist, it will empty the buffer !
+%%       Negative value will bring the lines from the end.
+%%       zero will bring all the lines.
 %%     Warning : Any new lines will be normalized to local new lines !
 %%@end
 %%-------------------------------------------------------------------------
 analyze(Buff, {jump, Mode}) -> L = re:split(Buff,"(?>\r\n|\n|\x0b|\f|\r|\x85)",[{return,list}]),
                                NewBuff = case Mode of
-                                    		first when (length(L) > 1 ) -> [NB | _ ] = L, NB  ;
-                                    		first when (length(L) == 1 )->  L  ;
-                                    		first when (length(L) == 0 )->  ""  ;
-                                    		last                        -> lists:last(L) ;
                                     		Int when (Int == 0)         -> {T,_} = lists:split(length(L), L),
                                                                   	       string:join(T, io_lib:nl());
                                     		Int when (Int < 0)          -> {_,T} = lists:split(length(L) + Int, L),
@@ -485,16 +505,18 @@ analyze(Buff, {jump, Mode}) -> L = re:split(Buff,"(?>\r\n|\n|\x0b|\f|\r|\x85)",[
 %%     Lines found becomes the next current buffer.
 %%@end
 %%-------------------------------------------------------------------------
+analyze(Buff, {nblines, first}) -> analyze(Buff, {nblines, 1}) ;
+analyze(Buff, {nblines, last})  -> analyze(Buff, {nblines, -1}) ;
 analyze(Buff, {nblines, Int}) ->
                                  NewBuff = case is_integer(Int) of
                                     		false -> throw(badarg), Buff ;
 						                    true when (Int == 0)-> "";
-                                    		true when (Int > 0) -> L = re:split(Buff,"(?>\r\n|\n|\x0b|\f|\r|\x85)",[{return,list}]),
-                                             		 	       {L2, _} = lists:split(Int, L),
-                                             		 	       string:join(L2,io_lib:nl());
-                                    		true when (Int < 0) -> L = re:split(Buff,"(?>\r\n|\n|\x0b|\f|\r|\x85)",[{return,list}]),
-                                             		 	       {L2, _} = lists:split((- Int), lists:reverse(L)),
-                                             		 	       string:join(lists:reverse(L2),io_lib:nl())
+                                    		true when (Int > 0) ->  L = re:split(Buff,?REG_LINES,[{return,list}]),
+                                             		 	            {L2, _} = lists:split(Int, L),
+                                             		 	            string:join(L2,io_lib:nl());
+                                    		true when (Int < 0) ->  L = re:split(Buff,?REG_LINES,[{return,list}]),
+                                             		 	            {L2, _} = lists:split((- Int), lists:reverse(L)),
+                                             		 	            string:join(lists:reverse(L2),io_lib:nl())
                                		   end,
                                ?SWAB_DBG({nblines, Int}, NewBuff),
                                NewBuff;
@@ -516,7 +538,7 @@ analyze(Buff, {nblines, Int}) ->
 %%                Warning : slower than other sorting methods.
 %%@end
 %%-------------------------------------------------------------------------
-analyze(Buff, {sort, Mode}) -> L = re:split(Buff,"(?>\r\n|\n|\x0b|\f|\r|\x85)",[{return,list}, trim]),
+analyze(Buff, {sort, Mode}) -> L = re:split(Buff,?REG_LINES,[{return,list}, trim]),
                                NewBuff = case Mode of 
 						                    normal  -> string:join(lists:sort(L),io_lib:nl()) ;
                                     		reverse -> string:join(lists:reverse(lists:sort(L)),io_lib:nl()) ;
@@ -606,7 +628,7 @@ analyze(Buff, {mfa, {M, F, A}}) when is_atom(M),
 					    		                   end;
 
 analyze(Buff, {tar, fakeroot}) -> try 
-                                       tar_fakeroot(Buff)
+                                       swab_tar:fakeroot(Buff)
                                   catch
                                        throw:invalid -> throw({error, {tar, fakeroot}, "Invalid Tar file"});
                                        error:Reason  -> throw({error, {tar, fakeroot}, Reason})
@@ -615,7 +637,7 @@ analyze(Buff, {tar, fakeroot}) -> try
 analyze(Buff, {tar, {Uid, User}}) 
             when is_integer(Uid),
                  is_list(User) -> try 
-                                       tar_change_user(Buff, {Uid, User})
+                                       swab_tar:change_user(Buff, {Uid, User})
                                      catch
                                        throw:invalid -> throw({error, {tar, {Uid, User}}, "Invalid Tar file"});
                                        error:Reason  -> throw({error, {tar, {Uid, User}}, Reason})
@@ -624,7 +646,7 @@ analyze(Buff, {tar, {Uid, User}})
 analyze(Buff, {tar, {Group, Gid}}) 
             when is_integer(Gid),
                  is_list(Group) -> try 
-                                       tar_change_group(Buff, {Gid, Group})
+                                       swab_tar:change_group(Buff, {Gid, Group})
                                      catch
                                        throw:invalid -> throw({error, {tar, {Gid, Group}}, "Invalid Tar file"});
                                        error:Reason  -> throw({error, {tar, {Gid, Group}}, Reason})

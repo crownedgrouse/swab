@@ -17,17 +17,20 @@ More seriously, module name comes from the relationship with the word `buffer' a
 
 == Abstract ==
 
-`swab' can cast data and sort lines. See {@section Refactoring}
+`swab' can :
+<ul>
+    <li>cast data and sort lines. See {@section Refactoring}</li>
 
-`swab' can decode, encode and convert data, including several EBCDIC flavours. See {@section Encoding / Converting}
+    <li>decode, encode and convert data, including EBCDIC. See {@section Encoding / Converting}</li>
 
-`swab' can catch data that becomes the new current buffer. See {@section Catching data}
+    <li>catch data that becomes the new current buffer. See {@section Catching data}</li>
 
-`swab' can match data and return the current buffer or otherwise continue next directives, if any. See {@section Matching data}
+    <li>match data and return the current buffer or otherwise continue next directives, if any. See {@section Matching data}</li>
 
-`swab' can store a buffer queue and maybe use it later to compose another buffer for instance, by merging or concatenating. See {@section Buffers handling}
+    <li>store a buffer queue and maybe use it later to compose another buffer for instance, by merging or concatenating. See {@section Buffers handling}</li>
 
-`swab' can do diverse specialized actions. (Pull requests welcome !). See {@section Misc}
+    <li>do diverse specialized (or custom) actions. (Pull requests welcome !). See {@section Misc}</li>
+</ul>
 
 `swab' give the possibility to debug all or part of the directive chain, to do hexdump "à la" ``od'' and also ASN1 pretty printing "à la" ``openssl asn1parse''. See {@section Debugging / Pretty printing}
 
@@ -36,7 +39,7 @@ Each step can modify the input buffer that becomes a new current buffer, and so 
 
 == Quality ==
 
-Dialyzer, Unit tests and Common tests are used to insure the maximum quality.
+Dialyzer and Unit tests are used to insure the maximum quality.
 If however you find a bug, please signal it on the GitHub page by opening an issue ticket, or better, fix it and propose a Pull Request.
 Features addition are welcome too.
 
@@ -167,7 +170,7 @@ Encode current buffer from Unicode to something.
 Except ``ebcdic'', all other types use Erlang BIFs, from unicode module.
 
 ==== {convert, Type} ====
-``Type = der | pem | base64 | mime | uncompress | unzip | gunzip | compress | zip | gzip | nonl | local_nl''
+``Type = der | pem | base64 | mime | uncompress | unzip | gunzip | compress | zip | gzip | nonl | local_nl | swab''
 
 Convertion of current buffer. 
 
@@ -178,7 +181,7 @@ Convertion of current buffer.
         away whitespace characters.</li>
 
      <li> ``uncompress | unzip | gunzip | compress | zip | gzip''
-        Same as a) but for main compression algorithms. 
+        Same as b) but for main compression algorithms. 
 	    <ul>
         	<li>``uncompress'' : Uncompress a binary (with zlib headers and checksum).</li>
         	<li>``unzip'' : Uncompress a binary (without zlib headers and checksum).</li>
@@ -190,9 +193,10 @@ Convertion of current buffer.
         (``\r'', ``\r\n'', ``\n'' but also ``\f'', ``\x85'' and ``\x0b'').</li>
 
      <li> ``local_nl'' Convert any new lines to local new lines.</li>
+     <li>``swab'' Exchange adjacent even and odd bytes. Bytes number should be even, or last byte left unchanged.</li>
 </ol>
 
-Except ``nonl'' and ``local_nl'' , all other types use Erlang BIFs, from several modules.
+Except ``nonl'', ``local_nl'' and ``swab'', all other types use Erlang BIFs, from several modules.
 
 <hr/>
 === Catching data ===
@@ -204,27 +208,18 @@ Returns the word in position Integer of String in current buffer. Words are sepa
    {ok, "Erlang"}'''
 
 ==== {jump, Mode} ====
-``Mode = integer() | first | last''
+``Mode = integer()''
 
 Line jumping on current buffer.
-<ol type="a">
-	<li> ``[integer()]'' Jump to the given line number and bring only lines after. 
+Jump to the given line number and bring only lines after. 
 			<ul>
 			 <li>Be carefull, if line does not exist, it will empty the buffer ! </li>
                          <li>Negative value will bring the lines from the end.</li>
                          <li>zero will bring all the lines.</li>
 			</ul>
-	</li>
-	<li> ``[last|first]'' : Bring only the last/first line of current buffer.</li>
-</ol>
 Warning : Any new lines will be normalized to local new lines !
 
-```swab:sync({jump, last },"Definitely...\nI love Erlang !").
-   {ok,"I love Erlang !"}
-   
-   swab:sync({jump, first },"Definitely...\nI love Erlang !").
-   {ok,"Definitely..."}
-
+```
    swab:sync({jump, 1 },"Definitely...\nI love Erlang !").    
    {ok,"I love Erlang !"}
 
@@ -234,7 +229,8 @@ Warning : Any new lines will be normalized to local new lines !
    swab:sync({jump, -1 },"Definitely...\nI love Erlang !").
    {ok,"I love Erlang !"}'''
 
-==== {nblines, integer() } ====
+==== {nblines, Mode } ====
+``Mode = integer() | first | last ''
 
 Get a number of lines from current buffer.
 	<ul>
@@ -242,6 +238,7 @@ Get a number of lines from current buffer.
 		<li>from end in buffer if &lt; 0</li>
 		<li>1 pick-up the first line only</li>
 		<li>0 clear the buffer !</li>
+	    <li> ``last|first'' : Bring only the last/first line of current buffer.</li>
 	</ul>
 Can be used in conjunction with 'jump' before in order to discard unwanted lines. Lines found becomes the next current buffer.
 
@@ -536,7 +533,7 @@ AS400 data received in EBCDIC without linefeed, from 128 characters length recor
 
 Replace UID and GID to 0 in a gzip'ed tar :
 
-```[{convert, gunzip}, {fakeroot, tar}, {convert, gzip}]'''
+```[{convert, gunzip}, {tar, fakeroot}, {convert, gzip}]'''
 
 
 Merge the two first lines and the last line of a string buffer (explained with debug) :

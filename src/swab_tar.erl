@@ -1,9 +1,9 @@
 %%%-------------------------------------------------------------------
-%%% File:      swab_tar.hrl
+%%% File:      swab_tar.erl
 %%% @author    Eric Pailleau <swab@crownedgrouse.com>
 %%% @copyright 2014 crownedgrouse.com
 %%% @doc  
-%%% 		Tar library
+%%% 		Tar module for swab
 %%% @end  
 %%%
 %%% Permission to use, copy, modify, and/or distribute this software
@@ -22,61 +22,72 @@
 %%%
 %%% Created : 2014-08-11
 %%%-------------------------------------------------------------------
+-module(swab_tar).
+
+-export([fakeroot/1, change_user/2, change_group/2]).
 
 %%-------------------------------------------------------------------------
 %%@doc Replace Uid and User
 %%@end
 %%-------------------------------------------------------------------------
-tar_change_user(Data, {Uid, User}) when is_integer(Uid),
-                                        is_list(User)   -> tar_change_user(Data, {Uid, User}, []).
+-spec change_user(binary(), tuple()) -> binary().
 
-tar_change_user([], {_, _}, Iolist)                                    -> list_to_binary(lists:flatten(Iolist));
-tar_change_user(<<Rest/binary>>, {_, _}, Iolist) when size(Rest)=< 512 -> list_to_binary(lists:flatten(Iolist ++ [Rest]));
+change_user(Data, {Uid, User}) when is_integer(Uid),
+                                        is_list(User)   -> change_user(Data, {Uid, User}, []).
 
-tar_change_user(<<Header:512/bytes,Rest/binary>>, 
+change_user(<<>>, {_, _}, Iolist)                                    -> list_to_binary(lists:flatten(Iolist));
+change_user(<<Rest/binary>>, {_, _}, Iolist) when size(Rest)=< 512 -> list_to_binary(lists:flatten(Iolist ++ [Rest]));
+
+change_user(<<Header:512/bytes,Rest/binary>>, 
                 {Uid, User}, 
                 Iolist) ->    {Skip, NewHeader} = tar_change_header_user(Header, {Uid, User}),
                               case Skip of
-                                   0 -> tar_change_user(Rest, {Uid, User}, Iolist ++ [NewHeader])  ;
+                                   0 -> change_user(Rest, {Uid, User}, Iolist ++ [NewHeader])  ;
                                    _ -> <<File:Skip/bytes,Next/binary>> = Rest,
-                                        tar_change_user(Next, {Uid, User}, Iolist ++ [NewHeader, File])
+                                        change_user(Next, {Uid, User}, Iolist ++ [NewHeader, File])
                               end.
 
 %%-------------------------------------------------------------------------
 %%@doc Replace Gid and Group 
 %%@end
 %%-------------------------------------------------------------------------
-tar_change_group(Data, {Gid, Group}) when is_integer(Gid),
-                                          is_list(Group)   ->  tar_change_group(Data, {Gid, Group}, []).
+-spec change_group(binary(), tuple()) -> binary().
 
-tar_change_group([], {_, _}, Iolist)                                    -> list_to_binary(lists:flatten(Iolist));
-tar_change_group(<<Rest/binary>>, {_, _}, Iolist) when size(Rest)=< 512 -> list_to_binary(lists:flatten(Iolist ++ [Rest]));
+change_group(Data, {Gid, Group}) when is_integer(Gid),
+                                          is_list(Group)   ->  change_group(Data, {Gid, Group}, []).
 
-tar_change_group(<<Header:512/bytes,Rest/binary>>, 
+change_group([], {_, _}, Iolist)                                    -> list_to_binary(lists:flatten(Iolist));
+change_group(<<Rest/binary>>, {_, _}, Iolist) when size(Rest)=< 512 -> list_to_binary(lists:flatten(Iolist ++ [Rest]));
+
+change_group(<<Header:512/bytes,Rest/binary>>, 
                 {Gid, Group}, 
                 Iolist) ->   {Skip, NewHeader} = tar_change_header_group(Header, {Gid, Group}),
                              case Skip of
-                                 0 -> tar_change_group(Rest, {Gid, Group}, Iolist ++ [NewHeader])  ;
+                                 0 -> change_group(Rest, {Gid, Group}, Iolist ++ [NewHeader])  ;
                                  _ -> <<File:Skip/bytes,Next/binary>> = Rest,
-                                      tar_change_group(Next, {Gid, Group}, Iolist ++ [NewHeader, File])
+                                      change_group(Next, {Gid, Group}, Iolist ++ [NewHeader, File])
                              end.
 
 %%-------------------------------------------------------------------------
 %%@doc Replace Uid/Gid and User/Group to 0/root
 %%@end
 %%-------------------------------------------------------------------------
-tar_fakeroot(Data) ->  tar_fakeroot(Data, []).
+-spec fakeroot(binary()) -> binary().
 
-tar_fakeroot([], Iolist)                                    -> list_to_binary(lists:flatten(Iolist));
-tar_fakeroot(<<Rest/binary>>, Iolist) when size(Rest)=< 512 -> list_to_binary(lists:flatten(Iolist ++ [Rest]));
+fakeroot(Data) ->  fakeroot(Data, []).
 
-tar_fakeroot(<<Header:512/bytes,Rest/binary>>, Iolist) ->  
+-spec fakeroot(binary(), iolist()) -> binary().
+
+fakeroot(<<>>, Iolist)                                    -> list_to_binary(lists:flatten(Iolist));
+fakeroot(<<Rest/binary>>, Iolist) when size(Rest)=< 512 -> list_to_binary(lists:flatten(Iolist ++ [Rest]));
+
+fakeroot(<<Header:512/bytes,Rest/binary>>, Iolist) ->  
                                                             {Skip, NewHeader1} = tar_change_header_user(Header, {0,"root"}),
                                                             {Skip, NewHeader} = tar_change_header_group(NewHeader1, {0,"root"}),
                                                             case Skip of
-                                                                   0 -> tar_fakeroot(Rest, Iolist ++ [NewHeader])  ;
+                                                                   0 -> fakeroot(Rest, Iolist ++ [NewHeader])  ;
                                                                    _ -> <<File:Skip/bytes,Next/binary>> = Rest,
-                                                                        tar_fakeroot(Next, Iolist ++ [NewHeader, File])
+                                                                        fakeroot(Next, Iolist ++ [NewHeader, File])
                                                             end.
 
 %%-------------------------------------------------------------------------
@@ -86,6 +97,7 @@ tar_fakeroot(<<Header:512/bytes,Rest/binary>>, Iolist) ->
 %%     or otherwise remaining padding zeroes at end of file.
 %%@end
 %%-------------------------------------------------------------------------
+-spec tar_change_header_user(binary(), tuple()) -> tuple().
 
 tar_change_header_user(<<Start:108/bytes,
                         _U:8/bytes,
@@ -117,6 +129,8 @@ tar_change_header_user(X,_) -> tar_change_header(X).
 %%     or otherwise remaining padding zeroes at end of file.
 %%@end
 %%-------------------------------------------------------------------------
+-spec tar_change_header_group(binary(), tuple()) -> tuple().
+
 tar_change_header_group(<<Start:108/bytes,
                         U:8/bytes,
                         _G:8/bytes,
@@ -144,15 +158,19 @@ tar_change_header_group(X,_) -> tar_change_header(X).
 %%@doc Remaining padding zeroes at end of file.
 %%@end
 %%-------------------------------------------------------------------------
+-spec tar_change_header(binary()) -> tuple().
+
 tar_change_header(X) -> case binary:copy(<<0>>, size(X)) of
                                 X -> {0, X} ;
-                                _ -> throw(invalid) % Neither valid header, nor zeroes padding.
+                                _ -> throw(invalid), {0, X} % Neither valid header, nor zeroes padding.
                         end.
 
 %%-------------------------------------------------------------------------
 %%@doc Checksum of Tar Header
 %%@end
 %%-------------------------------------------------------------------------
+-spec checksum(binary()) -> integer().
+
 checksum(H) -> checksum(H, 0).
 
 checksum(<<A,B,C,D,E,F,G,H,T/binary>>, Sum) ->
@@ -165,8 +183,12 @@ checksum(<<>>, Sum) -> Sum.
 %%@doc Cast to Octal
 %%@end
 %%-------------------------------------------------------------------------
+-spec to_octal(integer(), integer()) -> list().
+
 to_octal(Int, Count) when Count > 1 ->
     to_octal(Int, Count-1, [0]).
+
+-spec to_octal(integer(), integer(), list()) -> list().
 
 to_octal(_, 0, Result) -> Result;
 to_octal(Int, Count, Result) ->

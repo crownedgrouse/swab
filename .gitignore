@@ -4,3 +4,8 @@ deps
 *.beam
 *.plt
 erl_crash.dump
+*~
+*.html
+edoc-info
+*.png
+*.css

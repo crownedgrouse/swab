@@ -67,7 +67,8 @@ nonl([], L) -> L.
 %%@doc Fold
 %%@end
 %%-------------------------------------------------------------------------
-fold(Len, [], Acc) when is_integer(Len) -> Acc ;
+-spec fold(integer(), binary(), list()) -> iolist().
+fold(Len, <<>>, Acc) when is_integer(Len) -> Acc ;
 fold(Len, In, []) when  is_integer(Len),
                           is_binary(In),
                     byte_size(In) < Len -> binary_to_list(In) ;
@@ -84,6 +85,28 @@ fold(Len, In, Acc) when is_integer(Len),
                    byte_size(In) >= Len,
                         is_list(Acc)    -> {B1, B2} = split_binary(In, Len),
                                            fold(Len, B2, Acc ++ io_lib:nl() ++ binary_to_list(B1)) .
+
+%%-------------------------------------------------------------------------
+%%@doc Swab
+%% Exchange adjacent even and odd bytes.  
+%% This function is used to exchange data between machines that have different 
+%% low/high byte ordering.
+%% When byte number is odd, it handles n-1 bytes as above, and leave unchanged
+%% the last byte.  (In other words, bytes number should be even.)
+%% Original buffer type, list or binary, is kept.
+%%@end
+%%-------------------------------------------------------------------------
+-spec swab(list()| binary()) -> list() | binary().
+swab(Buff) when is_list(Buff) -> binary_to_list(swab(list_to_binary(Buff))) ;
+
+swab(Buff) when is_binary(Buff) -> swabify(Buff, []).
+
+-spec swabify(binary(), list()) -> binary().
+swabify(<<A,B,Rest/binary>>, Acc) -> swabify(Rest, Acc ++ [B, A]) ;
+
+swabify(<<A>>, Acc) -> swabify(<<>>, Acc ++ [A]) ;
+
+swabify(<<>>, Acc) -> list_to_binary(Acc) .
 
 %%-------------------------------------------------------------------------
 %%@doc Queue init.

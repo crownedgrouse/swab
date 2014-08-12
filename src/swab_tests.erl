@@ -74,10 +74,6 @@ analyze_test() ->
 		   ,?assertEqual({ok, "love"}, swab:sync([{sub_word, 2}], "   I\n love Erlang   "))
 		   ,?assertEqual({ok, "love"}, swab:sync({sub_word, 2}, "   I\n love Erlang   "))
 		   % jump
-		   ,?assertEqual({ok, "a"}, swab:sync([{jump, first}], "a\r\nb\nc\rd\fe\x85f\x0bg"))
-		   ,?assertEqual({ok, "a"}, swab:sync({jump, first}, "a\r\nb\nc\rd\fe\x85f\x0bg"))
-		   ,?assertEqual({ok, "g"}, swab:sync([{jump, last}], "a\r\nb\nc\rd\fe\x85f\x0bg"))
-		   ,?assertEqual({ok, "g"}, swab:sync({jump, last}, "a\r\nb\nc\rd\fe\x85f\x0bg"))
 		   ,?assertEqual({ok, "d"++?NL++"e"++?NL++"f"++?NL++"g"}, swab:sync([{jump, 3}], "a\r\nb\nc\rd\fe\x85f\x0bg"))
 		   ,?assertEqual({ok, "d"++?NL++"e"++?NL++"f"++?NL++"g"}, swab:sync({jump, 3}, "a\r\nb\nc\rd\fe\x85f\x0bg"))
 		   ,?assertEqual({ok, "a"++?NL++"b"++?NL++"c"++?NL++"d"++?NL++"e"++?NL++"f"++?NL++"g"}, 
@@ -87,6 +83,10 @@ analyze_test() ->
 		   ,?assertEqual({ok, "f"++?NL++"g"}, swab:sync([{jump, -2}], "a\r\nb\nc\rd\fe\x85f\x0bg"))
 		   ,?assertEqual({ok, "f"++?NL++"g"}, swab:sync({jump, -2}, "a\r\nb\nc\rd\fe\x85f\x0bg"))
 		   % nblines
+		   ,?assertEqual({ok, "a"}, swab:sync([{nblines, first}], "a\r\nb\nc\rd\fe\x85f\x0bg"))
+		   ,?assertEqual({ok, "a"}, swab:sync({nblines, first}, "a\r\nb\nc\rd\fe\x85f\x0bg"))
+		   ,?assertEqual({ok, "g"}, swab:sync([{nblines, last}], "a\r\nb\nc\rd\fe\x85f\x0bg"))
+		   ,?assertEqual({ok, "g"}, swab:sync({nblines, last}, "a\r\nb\nc\rd\fe\x85f\x0bg"))
 		   ,?assertEqual({ok, "123" }, swab:sync([{nblines, 1}], "123" ++ ?NL ++ "456" ++ ?NL ++ "789"))
 		   ,?assertEqual({ok, "123" }, swab:sync({nblines, 1}, "123" ++ ?NL ++ "456" ++ ?NL ++ "789"))
 		   ,?assertEqual({ok, "123" ++ ?NL ++ "456"}, swab:sync([{nblines, 2}], "123" ++ ?NL ++ "456" ++ ?NL ++ "789"))
@@ -107,12 +107,7 @@ analyze_test() ->
            ,?assertEqual({match, {fread, "~10f~d"},"     5.67899"},swab:sync({fread, "~10f~d"},"     5.67899"))
            ,?assertEqual({match, {fread, ":~10s:~10c:"},":   alan   :   joe    :"},swab:sync({fread, ":~10s:~10c:"},":   alan   :   joe    :"))
            % regexp
-
-           %*** BUFFER ***
-
-           %*** MISC ***
-           % tar
-
-		   .
+           ,?assertEqual({match, {regexp, {"^[A-Z]",[]}},"ABCDEFG"},swab:sync([{cast, upper}, {regexp, "^[A-Z]"}, {cast, lower}], "abcdefg"))
+           ,ok.
 
 -endif.
