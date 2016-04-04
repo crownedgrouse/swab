@@ -5,8 +5,5 @@ ERLC_OPTS = +debug_info +warn_export_all +warn_export_vars +warn_shadow_vars +wa
 
 include erlang.mk
 
-eunit: 
-	erl -noshell -pa `pwd`/ebin -pa `pwd`/priv -eval 'eunit:test(swab, [verbose])' -s init stop
-
 clean:: 
 	-@find . -type f -name \*~ -delete
