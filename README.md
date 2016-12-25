@@ -11,12 +11,11 @@ swab can :
 * catch data that becomes the new current buffer.
 * match data and return the current buffer or otherwise continue next directives, if any.
 * store a buffer queue and maybe use it later to compose another buffer for instance, by merging or concatenating.
-* do diverse specialized (or custom) actions. (Pull requests welcome !).
+* do variouz specialized (or custom) actions. (Pull requests welcome !).
 
 swab give the possibility to debug all or part of the directive chain, to do hexdump *à la* `od` and also ASN1 pretty printing *à la* `openssl asn1parse`. 
 
-swab offer a very easy way to chain directives as you would do by chaining commands with pipes in a shell. 
-
+swab offer a very easy way to chain directives as you would do by chaining commands with pipes in a shell. Jb
 Each step can modify the input buffer that becomes a new current buffer, and so on.
 
 ## Documentation ##
