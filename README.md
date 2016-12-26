@@ -15,7 +15,7 @@ swab can :
 
 swab give the possibility to debug all or part of the directive chain, to do hexdump *à la* `od` and also ASN1 pretty printing *à la* `openssl asn1parse`. 
 
-swab offer a very easy way to chain directives as you would do by chaining commands with pipes in a shell. Jb
+swab offer a very easy way to chain directives as you would do by chaining commands with pipes in a shell.
 Each step can modify the input buffer that becomes a new current buffer, and so on.
 
 ## Documentation ##
