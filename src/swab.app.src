@@ -1,7 +1,7 @@
 {application, swab,
  [
   {description, "General purpose buffer handling module"},
-  {vsn, "1.0.3"},
+  {vsn, "1.0.4"},
   {registered, []},
   {applications, [
                   kernel,

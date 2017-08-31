@@ -2,9 +2,9 @@
 %%% File:      swab.erl
 %%% @author    Eric Pailleau <swab@crownedgrouse.com>
 %%% @copyright 2014 crownedgrouse.com
-%%% @doc  
+%%% @doc
 %%% General purpose buffer handling
-%%% @end  
+%%% @end
 %%%
 %%% Permission to use, copy, modify, and/or distribute this software
 %%% for any purpose with or without fee is hereby granted, provided
@@ -32,25 +32,21 @@
 
 % Pre-compiled regexps for better performances.
 % (?>\r\n|\n|\x0b|\f|\r|\x85)
--define(REG_LINES, {re_pattern,0,0,0,
-            <<69,82,67,80,98,0,0,0,0,0,0,0,1,8,0,0,255,255,255,255,255,255,
-              255,255,0,0,0,0,0,0,0,0,0,0,56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-              0,0,0,0,0,125,0,38,124,0,7,29,13,29,10,113,0,5,29,10,113,0,5,29,
-              11,113,0,5,29,12,113,0,5,29,13,113,0,5,29,133,114,0,32,114,0,38,
-              0>>}).
+-define(REG_LINES, "(?>\r\n|\n|\x0b|\f|\r|\x85)").
+
 
 -include("swab_lib.hrl").
 
--define(SWAB_DBG(Tuple,Buf), case get(swab_dbg) of 
+-define(SWAB_DBG(Tuple,Buf), case get(swab_dbg) of
                                 'on'        -> io:fwrite("~s : ~p => ~p~n",[pid_to_list(self()),Tuple, Buf]),
                                                case get(swab_dbgqueue) of
-                                                    on -> queue_init(), 
-                                                          io:fwrite("           ~p~n",[queue:to_list(get(queue))]); 
+                                                    on -> queue_init(),
+                                                          io:fwrite("           ~p~n",[queue:to_list(get(queue))]);
                                                     _  -> ok
                                                end;
-                                'hexdump'   -> io:fwrite("~s : ~p => ~n"  ,[pid_to_list(self()),Tuple]), swab_hexdump:hexdump(Buf), ok ; 
+                                'hexdump'   -> io:fwrite("~s : ~p => ~n"  ,[pid_to_list(self()),Tuple]), swab_hexdump:hexdump(Buf), ok ;
                                 'asn1_pp'   -> io:fwrite("~s : ~p => ~n"  ,[pid_to_list(self()),Tuple]), _ = swab_asn1:asn1_pp(Buf), ok ;
-                                _ -> ok 
+                                _ -> ok
                              end  ).
 
 %%-------------------------------------------------------------------------
@@ -68,7 +64,7 @@ sync(Rules, Buffer) when is_tuple(Rules);
                          is_list(Rules) ->  try analyze(Buffer, Rules) of
 								                Term -> {ok, Term}
       					    		            catch throw:Term -> Term
-					    		            end. 
+					    		            end.
 
 %%-------------------------------------------------------------------------
 %% @doc Apply rules and return synchronously, but send result to a Pid.
@@ -78,9 +74,9 @@ sync(Rules, Buffer) when is_tuple(Rules);
 %%-------------------------------------------------------------------------
 -spec sync(list()|tuple(), iolist(), pid()) -> ok.
 
-sync(Rules, Buffer, Pid) when is_pid(Pid) -> Return = analyze(Buffer, Rules), 
-					     Pid ! {swab, self(), Return}, 
-					     ok. 
+sync(Rules, Buffer, Pid) when is_pid(Pid) -> Return = analyze(Buffer, Rules),
+					     Pid ! {swab, self(), Return},
+					     ok.
 
 %%-------------------------------------------------------------------------
 %% @doc Apply rules asynchronously, and send result to caller Pid.
@@ -92,7 +88,7 @@ sync(Rules, Buffer, Pid) when is_pid(Pid) -> Return = analyze(Buffer, Rules),
 %%-------------------------------------------------------------------------
 -spec async(list()|tuple(), iolist()) -> {ok, pid()}.
 
-async(Rules, Buffer) -> {ok, spawn(swab, sync, [Rules, Buffer, self()])}. 
+async(Rules, Buffer) -> {ok, spawn(swab, sync, [Rules, Buffer, self()])}.
 
 %%-------------------------------------------------------------------------
 %% @doc Apply rules asynchronously, but send result to a Pid.
@@ -117,7 +113,7 @@ async(Rules, Buffer, Pid) when is_pid(Pid) -> {ok, spawn(swab, sync, [Rules, Buf
 analyze(Buff, {debug, queue})-> put(swab_dbgqueue, on),
                                 ?SWAB_DBG({debug, queue}, Buff),
                                 Buff ;
-analyze(Buff, {debug, off})  -> put(swab_dbg, off), 
+analyze(Buff, {debug, off})  -> put(swab_dbg, off),
                                 put(swab_dbgqueue, off),
                                 ?SWAB_DBG({debug, off}, Buff),
                                 Buff ;
@@ -170,7 +166,7 @@ analyze(Buff, {buffer, out})     -> queue_init(),Q=get(queue),
 
 %%-------------------------------------------------------------------------
 %%@doc Get and removes the saved buffer at the rear (tail) of the queue.
-%%     The extracted buffer becomes then the current buffer, while current 
+%%     The extracted buffer becomes then the current buffer, while current
 %%     is saved in FRONT of queue if non empty.
 %%@end
 %%-------------------------------------------------------------------------
@@ -189,7 +185,7 @@ analyze(Buff, {buffer, out_r})   -> queue_init(),
                                     NewBuff;
 
 %%-------------------------------------------------------------------------
-%%@doc Delete the current buffer. 
+%%@doc Delete the current buffer.
 %%     Next buffer will be the first in queue (head), if any.
 %%@end
 %%-------------------------------------------------------------------------
@@ -203,7 +199,7 @@ analyze(_Buff, {buffer, del})    -> queue_init(),
                                     NewBuff;
 
 %%-------------------------------------------------------------------------
-%%@doc Delete the current buffer. 
+%%@doc Delete the current buffer.
 %%     Next buffer will be the last in queue (tail), if any.
 %%@end
 %%-------------------------------------------------------------------------
@@ -219,7 +215,7 @@ analyze(_Buff, {buffer, del_r})  -> queue_init(),
 
 %%-------------------------------------------------------------------------
 %%@doc Merge all buffers in only one buffer in queue.
-%%     Current buffer is left unchanged ! 
+%%     Current buffer is left unchanged !
 %%     Local newlines are separating merged buffers.
 %%@end
 %%-------------------------------------------------------------------------
@@ -248,7 +244,7 @@ analyze(Buff, {buffer, merge_r}) -> queue_init(),
 
 %%-------------------------------------------------------------------------
 %%@doc Concatenate all buffers in only one buffer in queue.
-%%     Current buffer is left unchanged ! 
+%%     Current buffer is left unchanged !
 %%@end
 %%-------------------------------------------------------------------------
 analyze(Buff, {buffer, concat})  -> queue_init(),
@@ -274,7 +270,7 @@ analyze(Buff, {buffer, concat_r})-> queue_init(),
                                     Buff;
 
 %%-------------------------------------------------------------------------
-%%@doc Push data as new current buffer in your directive chain 
+%%@doc Push data as new current buffer in your directive chain
 %%     Current buffer is overwritten.
 %%@end
 %%-------------------------------------------------------------------------
@@ -282,7 +278,7 @@ analyze(_, {push, Data}) when is_binary(Data);
                                  is_list(Data) -> Data ;
 
 %%-------------------------------------------------------------------------
-%%@doc Push data directly in front (head) of buffer queue. 
+%%@doc Push data directly in front (head) of buffer queue.
 %%     Current buffer is left unchanged.
 %%@end
 %%-------------------------------------------------------------------------
@@ -291,7 +287,7 @@ analyze(Buff, {store, Data}) when is_binary(Data);
                                                    Buff ;
 
 %%-------------------------------------------------------------------------
-%%@doc Push data directly in rear (tail) of buffer queue. 
+%%@doc Push data directly in rear (tail) of buffer queue.
 %%     Current buffer is left unchanged.
 %%@end
 %%-------------------------------------------------------------------------
@@ -305,7 +301,7 @@ analyze(Buff, {store_r, Data}) when is_binary(Data);
 %%**************************************************************************
 
 %%-------------------------------------------------------------------------
-%%@doc Cast the current buffer content. 
+%%@doc Cast the current buffer content.
 %%     Lowercase or uppercase.
 %%@end
 %%-------------------------------------------------------------------------
@@ -318,8 +314,8 @@ analyze(Buff, {cast, Type }) -> NewBuff = case Type of
                                 NewBuff ;
 
 %%-------------------------------------------------------------------------
-%%@doc Returns the word in position Integer of String in current buffer. 
-%%     Words are separated by blanks. 
+%%@doc Returns the word in position Integer of String in current buffer.
+%%     Words are separated by blanks.
 %%     (Usefull for getting version from program output).
 %%@end
 %%-------------------------------------------------------------------------
@@ -380,18 +376,18 @@ analyze(Buff, {fold, Len}) when is_integer(Len),
                                 is_list(Buff)       ->  fold(Len, list_to_binary(Buff), []) ;
 
 %%-------------------------------------------------------------------------
-%%@doc Convertion of current buffer. 
+%%@doc Convertion of current buffer.
 %%     a) der | pem - Only certificate DER <-> PEM format
 %%     b) base64 | mime - Same as 'decode' but for base64 encoding and mime RFC4648.
-%%        'mime' strips away illegal characters, while 'base64' only strips 
+%%        'mime' strips away illegal characters, while 'base64' only strips
 %%        away whitespace characters.
 %%     c) uncompress | unzip | gunzip | compress | zip | gzip
-%%        Same as a) but for main compression algorithms. 
+%%        Same as a) but for main compression algorithms.
 %%        Result is expected to be a string if a match is needed...
 %%        uncompress : Uncompress a binary (with zlib headers and checksum).
 %%        unzip : Uncompress a binary (without zlib headers and checksum).
 %%        gunzip : Uncompress a binary (with gz headers and checksum).
-%%     d) nonl - Removes any new lines separators whatever the OS type 
+%%     d) nonl - Removes any new lines separators whatever the OS type
 %%        (\r, \r\n, \n but also \f, \x85 and \x0b).
 %%     e) local_nl - Convert any new lines to local new lines.
 %%     f) swab - exchange adjacent even and odd bytes.
@@ -421,10 +417,10 @@ analyze(Buff, {convert, Type}) -> NewBuff = case Type of
                                   NewBuff;
 
 %%-------------------------------------------------------------------------
-%%@doc Decode current buffer to Unicode. 
+%%@doc Decode current buffer to Unicode.
 %%     [latin1 | unicode | utf8 | utf16 | utf32 | {utf16, big} | {utf16, little} | {utf32, big} | {utf32, little} | ebcdic]
 %%     Converts the current buffer from the given format to pure Unicode.
-%%     The purpose of the function is mainly to be able to convert 
+%%     The purpose of the function is mainly to be able to convert
 %%     combinations of unicode characters into a pure unicode string.
 %%@end
 %%-------------------------------------------------------------------------
@@ -440,16 +436,16 @@ analyze(Buff, {decode, Type}) -> NewBuff = case Type of
                                        		utf32 		-> (catch to_unicode(Buff,Type));
                                        		ebcdic 		-> swab_ebcdic:e2a(Buff);
                                        		_ 		-> throw(badarg), Buff
-                                  	    end,   
+                                  	    end,
                                   case NewBuff of
                                     {'EXIT', _} -> throw(badarg) ;
                                     _ -> ok
-                                  end,                               
+                                  end,
                                   ?SWAB_DBG({decode, Type}, NewBuff),
                                   NewBuff;
 
 %%-------------------------------------------------------------------------
-%%@doc Encode current buffer from Unicode to something. 
+%%@doc Encode current buffer from Unicode to something.
 %%@end
 %%-------------------------------------------------------------------------
 analyze(Buff, {encode, Type}) -> NewBuff = case Type of
@@ -474,7 +470,7 @@ analyze(Buff, {encode, Type}) -> NewBuff = case Type of
 
 %%-------------------------------------------------------------------------
 %%@doc Line extracting on current buffer (jump)
-%%       Jump to the given line number and bring only lines after. 
+%%       Jump to the given line number and bring only lines after.
 %%       Be carefull, if line does not exist, it will empty the buffer !
 %%       Negative value will bring the lines from the end.
 %%       zero will bring all the lines.
@@ -496,11 +492,11 @@ analyze(Buff, {jump, Mode}) -> L = re:split(Buff,"(?>\r\n|\n|\x0b|\f|\r|\x85)",[
 
 %%-------------------------------------------------------------------------
 %%@doc Line extracting on current buffer (nblines)
-%%     Get a number of lines of current buffer, 
-%%     forward in buffer if > 0, from end in buffer if < 0. 
+%%     Get a number of lines of current buffer,
+%%     forward in buffer if > 0, from end in buffer if < 0.
 %%     1 will pick-up the first line only.
 %%     Note : 0 will clear the buffer !
-%%     Can be used in conjunction with 'jump' before in order to discard 
+%%     Can be used in conjunction with 'jump' before in order to discard
 %%     unwanted lines.
 %%     Lines found becomes the next current buffer.
 %%@end
@@ -523,26 +519,26 @@ analyze(Buff, {nblines, Int}) ->
 
 %%-------------------------------------------------------------------------
 %%@doc  Sorting current buffer.
-%%	normal  : normal alphabetic sort. 
+%%	normal  : normal alphabetic sort.
 %%                When wanting to sort shuffled buffers merge.
 %%	reverse : from last line to first line.
-%%	numeral : on the numeral order. 
+%%	numeral : on the numeral order.
 %%                Usefull when entries with starting dates are shuffled.
-%%                Number is created from all numeral characters until first 
+%%                Number is created from all numeral characters until first
 %%                alphabetical characters, other separators will be discarded.
-%%                This allow valid sorting of ISO dates in lines like 
+%%                This allow valid sorting of ISO dates in lines like
 %%                "2010-04-18 12:02:23 Error in PID 3215." evaluated to number
 %%                20100418120223.
-%%                (Note that the PID number is not part of the evaluated number 
+%%                (Note that the PID number is not part of the evaluated number
 %%                as far some alphabetic characters are before it).
 %%                Warning : slower than other sorting methods.
 %%@end
 %%-------------------------------------------------------------------------
 analyze(Buff, {sort, Mode}) -> L = re:split(Buff,?REG_LINES,[{return,list}, trim]),
-                               NewBuff = case Mode of 
+                               NewBuff = case Mode of
 						                    normal  -> string:join(lists:sort(L),io_lib:nl()) ;
                                     		reverse -> string:join(lists:reverse(lists:sort(L)),io_lib:nl()) ;
-                                    		inverse -> string:join(lists:reverse(L),io_lib:nl()) 
+                                    		inverse -> string:join(lists:reverse(L),io_lib:nl())
                                		 end,
                                ?SWAB_DBG({sort, Mode}, NewBuff),
                                NewBuff;
@@ -550,10 +546,10 @@ analyze(Buff, {sort, Mode}) -> L = re:split(Buff,?REG_LINES,[{return,list}, trim
 %%-------------------------------------------------------------------------
 %%@doc  Grab data with catching regular expression.
 %%      If no catching expression is set, same as match directive.
-%%      
+%%
 %%@end
 %%-------------------------------------------------------------------------
-analyze(Buff, {grab, {MP, Opt}}) 
+analyze(Buff, {grab, {MP, Opt}})
 	 when is_list(Opt) -> 	try re:run(Buff, MP, Opt) of
 					{match, [Newbuff]}-> Newbuff ;
 					{match, [H | T]}  -> lists:flatten(H ++ T) ;
@@ -598,13 +594,13 @@ analyze(Buff, {fread, Control}) -> case io_lib:fread(Control, Buff) of
 %%      is returned  and all next rules are ignored.
 %%@end
 %%-------------------------------------------------------------------------
-analyze(Buff, {regexp, {MP, Opt}}) 
+analyze(Buff, {regexp, {MP, Opt}})
 	 when is_list(Opt) -> 	try re:run(Buff, MP, Opt) of
 					{match, [_]}       -> throw({match, {regexp,{MP, Opt}}, Buff}), Buff ;
 					{match, [_H | _T]} -> throw({match, {regexp,{MP, Opt}}, Buff}), Buff ;
 					match              -> throw({match, {regexp,{MP, Opt}}, Buff}), Buff ;
 					nomatch            -> Buff ;
-					{error, ErrType}   -> throw({error, {regexp, {MP, Opt}}, ErrType}), Buff 
+					{error, ErrType}   -> throw({error, {regexp, {MP, Opt}}, ErrType}), Buff
 				catch
 			    		throw:Term   -> throw(Term);
     					error:Reason -> throw({error, {regexp, {MP, Opt}}, Reason})
@@ -627,25 +623,25 @@ analyze(Buff, {mfa, {M, F, A}}) when is_atom(M),
     					                                 error:R  when is_list(R)-> throw({error, {mfa, {M, F, A}}, R})
 					    		                   end;
 
-analyze(Buff, {tar, fakeroot}) -> try 
+analyze(Buff, {tar, fakeroot}) -> try
                                        swab_tar:fakeroot(Buff)
                                   catch
                                        throw:invalid -> throw({error, {tar, fakeroot}, "Invalid Tar file"});
                                        error:Reason  -> throw({error, {tar, fakeroot}, Reason})
                                   end;
 
-analyze(Buff, {tar, {Uid, User}}) 
+analyze(Buff, {tar, {Uid, User}})
             when is_integer(Uid),
-                 is_list(User) -> try 
+                 is_list(User) -> try
                                        swab_tar:change_user(Buff, {Uid, User})
                                      catch
                                        throw:invalid -> throw({error, {tar, {Uid, User}}, "Invalid Tar file"});
                                        error:Reason  -> throw({error, {tar, {Uid, User}}, Reason})
                                      end;
 
-analyze(Buff, {tar, {Group, Gid}}) 
+analyze(Buff, {tar, {Group, Gid}})
             when is_integer(Gid),
-                 is_list(Group) -> try 
+                 is_list(Group) -> try
                                        swab_tar:change_group(Buff, {Gid, Group})
                                      catch
                                        throw:invalid -> throw({error, {tar, {Gid, Group}}, "Invalid Tar file"});
