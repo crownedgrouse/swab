@@ -3,7 +3,7 @@ defmodule Edgar.Mixfile do
 
   def project do
     [app: :swab,
-     version: "1.0.3",
+     version: "1.0.4",
      elixir: "~> 1.2",
      description: description(),
      package: package(),
@@ -22,16 +22,16 @@ defmodule Edgar.Mixfile do
   end
 
   defp description() do
-    "General purpose buffer handling module "
+    "General purpose buffer handling module."
   end
 
   defp package() do
     [
       # These are the default files included in the package
-      files: ["src", "doc", "priv", "mix.exs", "README.md", "LICENSE", "Makefile", "erlang.mk", "rebar.config"],
+      files: ["src", "doc", "priv", "mix.exs", "include", "README.md", "LICENSE", "Makefile", "erlang.mk", "rebar.config"],
       maintainers: ["Eric Pailleau"],
       licenses: ["ISC"],
-      links: %{"GitHub" => "https://github.com/crownedgrouse/edgar"}
+      links: %{"GitHub" => "https://github.com/crownedgrouse/swab"}
     ]
   end
 end
